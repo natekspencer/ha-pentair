@@ -14,7 +14,8 @@
     },
     "abort": {
       "already_configured": "Account is already configured",
-      "reauth_successful": "Re-authentication was successful"
+      "reauth_successful": "Re-authentication was successful",
+      "wrong_account": "The account doesn't match the one configured for this entry."
     }
   },
   "entity": {

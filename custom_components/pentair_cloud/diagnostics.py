@@ -8,8 +8,7 @@ from homeassistant.components.diagnostics.util import async_redact_data
 from homeassistant.core import HomeAssistant
 
 from . import PentairConfigEntry
-
-TO_REDACT = {"arn", "deviceId", "email", "userId"}
+from .const import TO_REDACT
 
 
 async def async_get_config_entry_diagnostics(

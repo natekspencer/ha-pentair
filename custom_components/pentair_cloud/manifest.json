@@ -1,6 +1,7 @@
 {
   "domain": "pentair_cloud",
   "name": "Pentair Home",
+  "after_dependencies": ["recorder"],
   "codeowners": ["@natekspencer"],
   "config_flow": true,
   "documentation": "https://github.com/natekspencer/ha-pentair",
@@ -8,6 +9,6 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/natekspencer/ha-pentair/issues",
   "loggers": ["custom_components.pentair_cloud", "pypentair", "botocore"],
-  "requirements": ["pypentair==0.4.3"],
+  "requirements": ["pypentair==0.5.0"],
   "version": "0.0.0"
 }
