@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from pypentair import Pentair, PentairAuthenticationError
+from pypentair import Pentair
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ACCESS_TOKEN, CONF_USERNAME, Platform
@@ -18,6 +18,7 @@ from .coordinator import (
     PentairDataUpdateCoordinator,
     PentairDeviceDataUpdateCoordinator,
 )
+from .helpers import is_auth_error
 
 type PentairConfigEntry = ConfigEntry[PentairDataUpdateCoordinator]
 
@@ -28,8 +29,6 @@ PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR]
 
 async def async_setup_entry(hass: HomeAssistant, entry: PentairConfigEntry) -> bool:
     """Set up Pentair from a config entry."""
-    entry.add_update_listener(update_listener)
-
     client = Pentair(
         username=entry.data.get(CONF_USERNAME),
         access_token=entry.data.get(CONF_ACCESS_TOKEN),
@@ -39,9 +38,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: PentairConfigEntry) -> b
 
     try:
         await hass.async_add_executor_job(client.get_auth)
-    except PentairAuthenticationError as err:
-        raise ConfigEntryAuthFailed(err) from err
     except Exception as ex:
+        if is_auth_error(ex):
+            raise ConfigEntryAuthFailed(ex) from ex
         raise ConfigEntryNotReady(ex) from ex
 
     coordinator = PentairDataUpdateCoordinator(
@@ -88,9 +87,30 @@ async def async_remove_entry(hass: HomeAssistant, entry: PentairConfigEntry) -> 
         _LOGGER.debug("Failed to logout during entry removal", exc_info=True)
 
 
-async def update_listener(hass: HomeAssistant, entry: PentairConfigEntry) -> None:
-    """Handle options update."""
-    await hass.config_entries.async_reload(entry.entry_id)
+async def async_migrate_entry(hass: HomeAssistant, entry: PentairConfigEntry) -> bool:
+    """Migrate an old config entry."""
+    if entry.version > 1:
+        # Downgraded from a future version
+        return False
+
+    if entry.minor_version < 2:
+        # 1.2: unique ID is the lowercased username instead of the domain
+        unique_id = entry.data[CONF_USERNAME].lower()
+        if any(
+            other.unique_id == unique_id
+            for other in hass.config_entries.async_entries(DOMAIN)
+            if other.entry_id != entry.entry_id
+        ):
+            _LOGGER.error(
+                "Cannot migrate %s: another entry already uses this account",
+                entry.title,
+            )
+            return False
+        hass.config_entries.async_update_entry(
+            entry, unique_id=unique_id, minor_version=2
+        )
+
+    return True
 
 
 async def async_remove_config_entry_device(

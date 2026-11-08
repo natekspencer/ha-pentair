@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import logging
 from typing import Any
 
 from pypentair import Pentair, PentairAuthenticationError
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow
+from homeassistant.config_entries import SOURCE_REAUTH, ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.data_entry_flow import FlowResult
 
 from .const import DOMAIN
 
@@ -24,27 +24,28 @@ class PentairConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Pentair."""
 
     VERSION = 1
+    MINOR_VERSION = 2
 
-    async def _async_create_entry(self, user_input: dict[str, Any]) -> FlowResult:
-        """Create the config entry."""
-        existing_entry = await self.async_set_unique_id(DOMAIN)
-
+    async def _async_create_entry(self, user_input: dict[str, Any]) -> ConfigFlowResult:
+        """Create the config entry, or update it when reauthenticating."""
         config_data = {k: v for k, v in user_input.items() if k != CONF_PASSWORD}
 
-        if existing_entry:
-            self.hass.config_entries.async_update_entry(
-                existing_entry, data=config_data
-            )
-            await self.hass.config_entries.async_reload(existing_entry.entry_id)
-            return self.async_abort(reason="reauth_successful")
+        await self.async_set_unique_id(config_data[CONF_USERNAME].lower())
 
+        if self.source == SOURCE_REAUTH:
+            self._abort_if_unique_id_mismatch(reason="wrong_account")
+            return self.async_update_reload_and_abort(
+                self._get_reauth_entry(), data=config_data
+            )
+
+        self._abort_if_unique_id_configured()
         return self.async_create_entry(
             title=config_data[CONF_USERNAME], data=config_data
         )
 
     async def async_pentair_login(
-        self, step_id, user_input: dict[str, Any] | None, schema: vol.Schema
-    ) -> FlowResult:
+        self, step_id: str, user_input: dict[str, Any], schema: vol.Schema
+    ) -> ConfigFlowResult:
         """Attempt a login with Pentair."""
         errors = {}
 
@@ -66,32 +67,27 @@ class PentairConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle the initial step."""
-        errors = {}
-
         if user_input is not None:
-            for entry in self._async_current_entries():
-                if entry.data[CONF_USERNAME] == user_input[CONF_USERNAME]:
-                    return self.async_abort(reason="already_configured")
+            await self.async_set_unique_id(user_input[CONF_USERNAME].lower())
+            self._abort_if_unique_id_configured()
 
             return await self.async_pentair_login(
                 step_id="user", user_input=user_input, schema=STEP_USER_DATA_SCHEMA
             )
 
-        return self.async_show_form(
-            step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
-        )
+        return self.async_show_form(step_id="user", data_schema=STEP_USER_DATA_SCHEMA)
 
     async def async_step_reauth(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+        self, entry_data: Mapping[str, Any]
+    ) -> ConfigFlowResult:
         """Perform reauth upon an API authentication error."""
-        return await self.async_step_reauth_confirm(user_input)
+        return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Dialog that informs the user that reauth is required."""
         if user_input is None:
             user_input = {}
@@ -101,7 +97,7 @@ class PentairConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Required(
                     CONF_USERNAME,
                     default=user_input.get(
-                        CONF_USERNAME, self.init_data.get(CONF_USERNAME)
+                        CONF_USERNAME, self._get_reauth_entry().data.get(CONF_USERNAME)
                     ),
                 ): str,
                 vol.Required(CONF_PASSWORD): str,

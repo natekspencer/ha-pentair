@@ -15,9 +15,11 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import EntityCategory, UnitOfMass
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import PentairConfigEntry
+from .const import DOMAIN, SECRET_FIELDS
 from .entity import PentairEntity
 from .helpers import convert_timestamp, get_field_value
 
@@ -61,6 +63,9 @@ async def async_setup_entry(
                 )
             )
             for field, field_data in data.get("fields", {}).items():
+                if field in SECRET_FIELDS:
+                    _async_remove_secret_entity(hass, data["deviceId"], field)
+                    continue
                 if not isinstance(field_data, dict):
                     continue
                 unit = UNIT_MAP.get(field_data.get("unit"))
@@ -90,6 +95,17 @@ async def async_setup_entry(
         return
 
     async_add_entities(entities)
+
+
+def _async_remove_secret_entity(
+    hass: HomeAssistant, device_id: str, field: str
+) -> None:
+    """Remove a sensor created for a secret field by an earlier version."""
+    entity_registry = er.async_get(hass)
+    if entity_id := entity_registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{device_id}-{field}"
+    ):
+        entity_registry.async_remove(entity_id)
 
 
 class PentairSensorEntity(PentairEntity, SensorEntity):

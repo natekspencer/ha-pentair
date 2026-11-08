@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 import logging
 from time import time
 from typing import Any
 
+from botocore.exceptions import ClientError
+from pypentair import PentairAuthenticationError
 from pypentair.utils import get_api_field_name_and_value
-
-from homeassistant.util.dt import UTC
+from requests import HTTPError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -17,6 +18,22 @@ _LOGGER = logging.getLogger(__name__)
 def convert_timestamp(_ts: float) -> datetime:
     """Convert a timestamp to a datetime."""
     return datetime.fromtimestamp(_ts / (1000 if _ts > time() else 1), UTC)
+
+
+def is_auth_error(err: BaseException) -> bool:
+    """Return True if the error means the stored credentials are no longer valid.
+
+    pypentair only wraps errors from the initial token check. A revoked or
+    expired refresh token surfaces later as a Cognito `NotAuthorizedException`,
+    and a rejected id token as an HTTP 401 from the API.
+    """
+    if isinstance(err, PentairAuthenticationError):
+        return True
+    if isinstance(err, ClientError):
+        return err.response.get("Error", {}).get("Code") == "NotAuthorizedException"
+    if isinstance(err, HTTPError) and err.response is not None:
+        return err.response.status_code == 401
+    return False
 
 
 def get_field_value(key: str, data: dict) -> Any:
