@@ -1,6 +1,7 @@
 {
   "domain": "pentair_cloud",
   "name": "Pentair Home",
+  "after_dependencies": ["recorder"],
   "codeowners": ["@natekspencer"],
   "config_flow": true,
   "documentation": "https://github.com/natekspencer/ha-pentair",
