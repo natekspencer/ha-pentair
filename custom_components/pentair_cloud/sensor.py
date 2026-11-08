@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import (
+    DOMAIN as SENSOR_DOMAIN,
     SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
@@ -40,6 +41,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up Pentair sensors using config entry."""
     coordinator = config_entry.runtime_data
+    _async_remove_secret_entities(hass, config_entry)
 
     entities: list[PentairSensorEntity] = []
     for device_coordinator in coordinator.device_coordinators:
@@ -64,7 +66,6 @@ async def async_setup_entry(
             )
             for field, field_data in data.get("fields", {}).items():
                 if field in SECRET_FIELDS:
-                    _async_remove_secret_entity(hass, data["deviceId"], field)
                     continue
                 if not isinstance(field_data, dict):
                     continue
@@ -97,15 +98,24 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-def _async_remove_secret_entity(
-    hass: HomeAssistant, device_id: str, field: str
+def _async_remove_secret_entities(
+    hass: HomeAssistant, config_entry: PentairConfigEntry
 ) -> None:
-    """Remove a sensor created for a secret field by an earlier version."""
+    """Remove sensors created for secret fields by earlier versions.
+
+    Checked against the registry rather than the device payload, so they are
+    removed even if a device no longer reports the field.
+    """
     entity_registry = er.async_get(hass)
-    if entity_id := entity_registry.async_get_entity_id(
-        "sensor", DOMAIN, f"{device_id}-{field}"
+    for entry in er.async_entries_for_config_entry(
+        entity_registry, config_entry.entry_id
     ):
-        entity_registry.async_remove(entity_id)
+        if (
+            entry.domain == SENSOR_DOMAIN
+            and entry.platform == DOMAIN
+            and entry.unique_id.rpartition("-")[2] in SECRET_FIELDS
+        ):
+            entity_registry.async_remove(entry.entity_id)
 
 
 class PentairSensorEntity(PentairEntity, SensorEntity):
