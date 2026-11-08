@@ -130,9 +130,22 @@ async def _async_remove_secret_entities(
         return
     if hass.services.has_service(RECORDER_DOMAIN, "purge_entities"):
         _LOGGER.info("Purging recorded history of removed sensors: %s", removed)
-        await hass.services.async_call(
-            RECORDER_DOMAIN, "purge_entities", {ATTR_ENTITY_ID: removed}
-        )
+        try:
+            # Blocking only waits for the recorder to queue the purge
+            await hass.services.async_call(
+                RECORDER_DOMAIN,
+                "purge_entities",
+                {ATTR_ENTITY_ID: removed},
+                blocking=True,
+            )
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.warning(
+                "Couldn't purge the recorded history of removed sensors that "
+                "exposed a security key or password. Purge them with the "
+                "recorder.purge_entities action: %s",
+                ", ".join(removed),
+                exc_info=True,
+            )
     else:
         # The registry entries are gone, so a later setup can't retry this
         _LOGGER.warning(

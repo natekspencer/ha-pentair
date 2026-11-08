@@ -31,7 +31,8 @@ async def _async_fetch(
     except Exception as err:  # pylint: disable=broad-except
         if is_auth_error(err):
             raise ConfigEntryAuthFailed(err) from err
-        _LOGGER.exception("Unknown exception while updating Pentair data")
+        # The coordinator logs the failure, so only add the traceback for debugging
+        _LOGGER.debug("Error updating Pentair data", exc_info=True)
         raise UpdateFailed(err) from err
 
 

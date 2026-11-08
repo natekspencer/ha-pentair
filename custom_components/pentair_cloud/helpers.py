@@ -30,7 +30,8 @@ def is_auth_error(err: BaseException) -> bool:
     if isinstance(err, PentairAuthenticationError):
         return True
     if isinstance(err, ClientError):
-        return err.response.get("Error", {}).get("Code") == "NotAuthorizedException"
+        error = (err.response or {}).get("Error") or {}
+        return error.get("Code") == "NotAuthorizedException"
     if isinstance(err, HTTPError) and err.response is not None:
         return err.response.status_code == 401
     return False
